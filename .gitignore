@@ -30,3 +30,6 @@ Temporary Items
 sd-card*
 __pycache__
 *.pyc
+
+# eclipse
+/.project
