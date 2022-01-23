@@ -2,7 +2,7 @@
   basic button actions:
   =====================
 
-  Button B0 (by default pin A0, middle button on the original TonUINO): play+pause
+  Button B0 (by default pin A0, middle button on the original TonUINO): play/pause
   Button B1 (by default pin A1, right button on the original TonUINO): volume up
   Button B2 (by default pin A2, left button on the original TonUINO): volume down
   Button B3 (by default pin A3, optional): previous track
@@ -76,7 +76,7 @@
   During playback:
   ----------------
   center - toggle box lock
-  play+pause - toggle playback
+  play/pause - toggle playback
   up / down - volume up / down
   left / right - previous / next track ((v)album, (v)party and story book mode)
   menu - reset progress to track 1 (story book mode)
@@ -85,7 +85,7 @@
   During parents menu:
   --------------------
   center - announce current option
-  play+pause - confirm selection
+  play/pause - confirm selection
   up / down - next / previous option
   left / right - jump 10 options backwards / forward
   menu - cancel
@@ -93,7 +93,7 @@
   During nfc tag setup mode:
   --------------------------
   center - announce current folder, mode or track number
-  play+pause - confirm selection
+  play/pause - confirm selection
   up / down - next / previous folder, mode or track
   left / right - jump 10 folders or tracks backwards / forward
   menu - cancel
@@ -133,13 +133,13 @@
      the '#define STATUSLEDRGB' below. TonUINO will signal various status information
      in different patterns and colors, for example:
 
-     - Pulse slowly white when TonUINO is idle.
+     - Pulse slowly green when TonUINO is idle.
      - Solid green when TonUINO is playing a title.
-     - Blink blue every 500ms when interactive in menus etc.
+     - Blink yellow every 500ms when interactive in menus etc.
      - Blink red every 100ms if the LOWVOLTAGE feature is active and the battery is low.
      - Burst 4 times red when TonUINO is locked and 8 times green when unlocked.
-     - Burst 4 times pink when repeat is activated and 8 times pink when deactivated.
-     - Burst 8 times yellow when the track in story book mode is reset to 1.
+     - Burst 4 times white when repeat is activated and 8 times white when deactivated.
+     - Burst 8 times magenta when the track in story book mode is reset to 1.
 
      There are some more signals, they try to be intuitive. You'll see.
 
@@ -283,7 +283,7 @@ using namespace ace_button;
 enum {NOMODE, STORY, ALBUM, PARTY, SINGLE, STORYBOOK, VSTORY, VALBUM, VPARTY};
 
 // button actions
-enum {NOACTION,
+enum {NOP,
       B0P, B1P, B2P, B3P, B4P,
       B0H, B1H, B2H, B3H, B4H,
       B0D, B1D, B2D, B3D, B4D,
@@ -300,11 +300,11 @@ enum {START, STOP, CHECK, SHUTDOWN};
 enum {READ, WRITE, MIGRATE, RESET, RESET_PROGRESS};
 
 // status led actions
-enum {OFF, SOLID, PULSE, BLINK, BURST4, BURST8};
+enum {OFF, SOLID, PULSE, BLINK, BURST2, BURST4, BURST8};
 
 // define general configuration constants
-const uint8_t mp3SerialTxPin = 3;                   // mp3 serial tx, wired with 1k ohm to rx pin of DFPlayer Mini
-const uint8_t mp3SerialRxPin = 2;                   // mp3 serial rx, wired straight to tx pin of DFPlayer Mini
+const uint8_t mp3SerialRxPin = 2;                   // mp3 serial rx, wired to tx pin of DFPlayer Mini
+const uint8_t mp3SerialTxPin = 3;                   // mp3 serial tx, wired to rx pin of DFPlayer Mini
 const uint8_t mp3BusyPin = 4;                       // reports play state of DFPlayer Mini (LOW = playing)
 #if defined IRREMOTE
 const uint8_t irReceiverPin = 5;                    // pin used for the ir receiver
@@ -324,13 +324,10 @@ const uint8_t button2Pin = A2;                      // left button
 const uint8_t button3Pin = A3;                      // optional 4th button
 const uint8_t button4Pin = A4;                      // optional 5th button
 #endif
-const uint16_t buttonClickDelay = 1000;             // time during which a button click is still a click (in milliseconds)
+const uint16_t buttonClickDelay = 1000;             // time during which a button press is still a click (in milliseconds)
 const uint16_t buttonShortLongPressDelay = 2000;    // time after which a button press is considered a long press (in milliseconds)
-const uint16_t buttonLongLongPressDelay = 5000;     // longer long press delay for special cases, i.e. to trigger erase nfc tag mode (in milliseconds)
+const uint16_t buttonLongLongPressDelay = 5000;     // longer long press delay for special cases, i.e. to trigger the parents menu (in milliseconds)
 const uint32_t debugConsoleSpeed = 9600;            // speed for the debug console
-
-// number of mp3 files in advert folder + number of mp3 files in mp3 folder
-const uint16_t msgCount = 576;
 
 // define magic cookie (by default 0x13 0x37 0xb3 0x47)
 const uint8_t magicCookieHex[4] = {0x13, 0x37, 0xb3, 0x47};
@@ -339,7 +336,7 @@ const uint8_t magicCookieHex[4] = {0x13, 0x37, 0xb3, 0x47};
 // define pin code, allowed enums for pinCode[]: B0P, B1P, B2P (plus B3P & B4P if FIVEBUTTONS is enabled)
 const uint8_t pinCode[] = {B0P, B2P, B1P, B0P};     // for example play/pause, vol-, vol+, play/pause
 const uint8_t pinCodeLength = sizeof(pinCode);
-const uint8_t pinCodeIrToButtonMapping[] = {B1P, B2P, B3P, B4P, NOACTION, IRM, B0P};
+const uint8_t pinCodeIrToButtonMapping[] = {B1P, B2P, B3P, B4P, NOP, IRM, B0P};
 const uint64_t enterPinCodeTimeout = 10000;         // time to enter the pin code (in milliseconds)
 #endif
 
@@ -432,7 +429,7 @@ struct preferenceStruct {
 };
 
 // global variables
-uint8_t inputEvent = NOACTION;
+uint8_t inputEvent = NOP;
 uint32_t magicCookie = 0;
 uint32_t preferenceCookie = 0;
 playbackStruct playback;
@@ -498,6 +495,22 @@ class Mp3Notify {
             Serial.print(F("advertise"));
             break;
           }
+        case DfMp3_Error_RxTimeout: {
+            Serial.print(F("rx timeout"));
+            break;
+          }
+        case DfMp3_Error_PacketSize: {
+            Serial.print(F("packet size"));
+            break;
+          }
+        case DfMp3_Error_PacketHeader: {
+            Serial.print(F("packet header"));
+            break;
+          }
+        case DfMp3_Error_PacketChecksum: {
+            Serial.print(F("packet checksum"));
+            break;
+          }
         case DfMp3_Error_General: {
             Serial.print(F("general"));
             break;
@@ -509,26 +522,23 @@ class Mp3Notify {
       }
       Serial.println(F(" error"));
     }
-    static void OnPlayFinished(uint16_t returnValue) {
+    static void PrintlnSourceAction(DfMp3_PlaySources source, const char* action) {
+      if (source & DfMp3_PlaySources_Sd) Serial.print("sd ");
+      if (source & DfMp3_PlaySources_Usb) Serial.print("usb ");
+      if (source & DfMp3_PlaySources_Flash) Serial.print("flash ");
+      Serial.println(action);
+    }
+    static void OnPlayFinished(DfMp3_PlaySources source, uint16_t returnValue) {
       playNextTrack(returnValue, true, false);
     }
-    static void OnCardOnline(uint16_t returnValue) {
-      Serial.println(F("sd online"));
+    static void OnPlaySourceOnline(DfMp3_PlaySources source) {
+      PrintlnSourceAction(source, "online");
     }
-    static void OnCardInserted(uint16_t returnValue) {
-      Serial.println(F("sd in"));
+    static void OnPlaySourceInserted(DfMp3_PlaySources source) {
+      PrintlnSourceAction(source, "in");
     }
-    static void OnCardRemoved(uint16_t returnValue) {
-      Serial.println(F("sd out"));
-    }
-    static void OnUsbOnline(uint16_t returnValue) {
-      Serial.println(F("usb online"));
-    }
-    static void OnUsbInserted(uint16_t returnValue) {
-      Serial.println(F("usb in"));
-    }
-    static void OnUsbRemoved(uint16_t returnValue) {
-      Serial.println(F("usb out"));
+    static void OnPlaySourceRemoved(DfMp3_PlaySources source) {
+      PrintlnSourceAction(source, "out");
     }
 };
 
@@ -546,11 +556,6 @@ ButtonConfig button3Config;                                                   //
 ButtonConfig button4Config;                                                   // create ButtonConfig instance
 AceButton button3(&button3Config);                                            // create AceButton instance
 AceButton button4(&button4Config);                                            // create AceButton instance
-#endif
-
-#if defined IRREMOTE
-IRrecv irReceiver(irReceiverPin);                                             // create IRrecv instance
-decode_results irReading;                                                     // create decode_results instance to store received ir reading
 #endif
 
 #if defined STATUSLED ^ defined STATUSLEDRGB
@@ -617,8 +622,8 @@ void setup() {
   Serial.print(F("      eq "));
   Serial.println(mp3EqualizerName[preference.mp3Equalizer]);
   mp3.setEq((DfMp3_Eq)(preference.mp3Equalizer - 1));
-  Serial.print(F("  tracks "));
-  Serial.println(mp3.getTotalTrackCount() - msgCount);
+  Serial.print(F("   files "));
+  Serial.println(mp3.getTotalTrackCount(DfMp3_PlaySource_Sd));
   pinMode(mp3BusyPin, INPUT);
 
   Serial.print(F("init"));
@@ -647,7 +652,7 @@ void setup() {
 
 #if defined IRREMOTE
   Serial.println(F("init ir"));
-  irReceiver.enableIRIn();
+  IrReceiver.begin(irReceiverPin, DISABLE_LED_FEEDBACK);
 #endif
 
 #if defined STATUSLED ^ defined STATUSLEDRGB
@@ -734,13 +739,13 @@ void loop() {
   else {
 #if defined STATUSLED ^ defined STATUSLEDRGB
     if (playback.isPlaying) statusLedUpdate(SOLID, 0, 255, 0, 100);
-    else statusLedUpdate(PULSE, 255, 255, 255, 100);
+    else statusLedUpdate(PULSE, 0, 255, 0, 100);
 #endif
   }
 #else
 #if defined STATUSLED ^ defined STATUSLEDRGB
   if (playback.isPlaying) statusLedUpdate(SOLID, 0, 255, 0, 100);
-  else statusLedUpdate(PULSE, 255, 255, 255, 100);
+  else statusLedUpdate(PULSE, 0, 255, 0, 100);
 #endif
 #endif
 
@@ -931,7 +936,7 @@ void loop() {
 
         switchButtonConfiguration(PAUSE);
         shutdownTimer(START);
-        inputEvent = NOACTION;
+        inputEvent = NOP;
       }
       // # end - nfc tag does not have our magic cookie on it
       // ####################################################
@@ -959,7 +964,7 @@ void loop() {
 #endif
     }
   }
-  // button 0 (middle) press or ir remote play+pause: toggle playback
+  // button 0 (middle) press or ir remote play/pause: toggle playback
   else if ((inputEvent == B0P && !playback.isLocked) || inputEvent == IRP) {
     if (playback.isPlaying) {
       switchButtonConfiguration(PAUSE);
@@ -989,14 +994,20 @@ void loop() {
       Serial.print(F("volume "));
       Serial.println(playback.mp3CurrentVolume);
     }
+#if defined STATUSLED
+    else statusLedUpdate(BURST2, 255, 0, 0, 0);
+#endif
   }
   // button 2 (left) press or ir remote down while playing: decrease volume
   else if (((inputEvent == B2P && !playback.isLocked) || inputEvent == IRD) && playback.isPlaying) {
-    if (playback.mp3CurrentVolume > 0) {
+    if (playback.mp3CurrentVolume > 1) {
       mp3.setVolume(--playback.mp3CurrentVolume);
       Serial.print(F("volume "));
       Serial.println(playback.mp3CurrentVolume);
     }
+#if defined STATUSLED
+    else statusLedUpdate(BURST2, 255, 0, 0, 0);
+#endif
   }
   // button 1 (right) hold for 2 sec or button 5 press or ir remote right, only during (v)album, (v)party and story book mode while playing: next track
   else if ((((inputEvent == B1H || inputEvent == B4P) && !playback.isLocked) || inputEvent == IRR) && (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying) {
@@ -1014,13 +1025,13 @@ void loop() {
     if ((playback.isRepeat = !playback.isRepeat)) {
       Serial.println(F("on"));
 #if defined STATUSLED ^ defined STATUSLEDRGB
-      statusLedUpdate(BURST4, 255, 0, 255, 0);
+      statusLedUpdate(BURST4, 255, 255, 255, 0);
 #endif
     }
     else {
       Serial.println(F("off"));
 #if defined STATUSLED ^ defined STATUSLEDRGB
-      statusLedUpdate(BURST8, 255, 0, 255, 0);
+      statusLedUpdate(BURST8, 255, 255, 255, 0);
 #endif
     }
   }
@@ -1032,7 +1043,7 @@ void loop() {
     EEPROM.update(playback.currentTag.folder, 0);
     mp3.playFolderTrack(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
 #if defined STATUSLED ^ defined STATUSLEDRGB
-    statusLedUpdate(BURST8, 255, 255, 0, 0);
+    statusLedUpdate(BURST8, 255, 0, 255, 0);
 #endif
   }
   // button 0 (middle) hold for 5 sec or ir remote menu while not playing: parents menu
@@ -1050,10 +1061,10 @@ void loop() {
 // ################################################################ functions are below this line! ################################################################
 // ################################################################################################################################################################
 
-// checks all input sources and populates the global inputEvent variable
+// checks all input sources (and populates the global inputEvent variable for ir events)
 void checkForInput() {
   // clear inputEvent
-  inputEvent = NOACTION;
+  inputEvent = NOP;
 
   // check all buttons
   button0.check();
@@ -1065,16 +1076,15 @@ void checkForInput() {
 #endif
 
 #if defined IRREMOTE
-  uint8_t irRemoteEvent = NOACTION;
+  uint8_t irRemoteEvent = NOP;
   uint16_t irRemoteCode = 0;
   static uint64_t irRemoteOldMillis;
 
   // poll ir receiver, has precedence over (overwrites) physical buttons
-  if (irReceiver.decode(&irReading)) {
-    // on NEC encoding 0xFFFFFFFF means the button is held down, we ignore this
-    if (!(irReading.decode_type == NEC && irReading.value == 0xFFFFFFFF)) {
-      // convert irReading.value from 32bit to 16bit
-      irRemoteCode = (irReading.value & 0xFFFF);
+  if (IrReceiver.decode()) {
+    // process only codes which don't have the repeat flag set
+    if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT)) {
+      irRemoteCode = IrReceiver.decodedIRData.command;
       for (uint8_t i = 0; i < irRemoteCount; i++) {
         for (uint8_t j = 0; j < irRemoteCodeCount; j++) {
           //if we have a match, temporally populate irRemoteEvent and break
@@ -1086,19 +1096,19 @@ void checkForInput() {
         }
         // if the inner loop had a match, populate inputEvent and break
         // ir remote key presses are debounced by 250ms
-        if (irRemoteEvent != 0 && millis() - irRemoteOldMillis >= 250) {
+        if (millis() - irRemoteOldMillis >= 250) {
           irRemoteOldMillis = millis();
           inputEvent = irRemoteEvent;
           break;
         }
       }
     }
-    irReceiver.resume();
+    IrReceiver.resume();
   }
 #endif
 }
 
-// translates the various button events into enums
+// translates the various button events into enums and populates the global inputEvent variable
 void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* buttonState */) {
   switch (button->getId()) {
     // button 0 (middle)
@@ -1291,6 +1301,7 @@ void waitPlaybackToFinish(uint8_t red, uint8_t green, uint8_t blue, uint16_t sta
 #if defined STATUSLED ^ defined STATUSLEDRGB
     statusLedUpdate(BLINK, red, green, blue, statusLedUpdateInterval);
 #endif
+    mp3.loop();
   }
 }
 
@@ -1329,11 +1340,11 @@ void printModeFolderTrack(bool cr) {
 void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredManually) {
   static uint16_t lastCallTrack = 0;
 
-  //delay 100ms to be on the safe side with the serial communication
-  delay(100);
-
   // we only advance to a new track when in playlist mode, not during interactive prompt playback (ie. during configuration of a new nfc tag)
   if (!playback.playListMode) return;
+
+  //delay 100ms to be on the safe side with the serial communication
+  delay(100);
 
   // story mode (1): play one random track in folder
   // single mode (4): play one single track in folder
@@ -1403,6 +1414,9 @@ void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredMa
           Serial.println();
           mp3.stop();
         }
+#if defined STATUSLED
+        else statusLedUpdate(BURST2, 255, 0, 0, 0);
+#endif
       }
     }
     // play previous track?
@@ -1413,6 +1427,9 @@ void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredMa
         printModeFolderTrack(true);
         mp3.playFolderTrack(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
       }
+#if defined STATUSLED
+      else statusLedUpdate(BURST2, 255, 0, 0, 0);
+#endif
     }
   }
 }
@@ -1755,7 +1772,7 @@ uint8_t prompt(uint8_t promptOptions, uint16_t promptHeading, uint16_t promptOff
         return (uint8_t)promptResultSerial;
       }
     }
-    // button 0 (middle) press or ir remote play+pause: confirm selection
+    // button 0 (middle) press or ir remote play/pause: confirm selection
     if ((inputEvent == B0P || inputEvent == IRP) && promptResult != 0) {
       if (promptPreview && !playback.isPlaying) {
         if (promptFolder == 0) mp3.playFolderTrack(promptResult, 1);
@@ -1833,7 +1850,7 @@ uint8_t prompt(uint8_t promptOptions, uint16_t promptHeading, uint16_t promptOff
       mp3.playMp3FolderTrack(promptResult + promptOffset);
     }
 #if defined STATUSLED ^ defined STATUSLEDRGB
-    statusLedUpdate(BLINK, 0, 0, 255, 500);
+    statusLedUpdate(BLINK, 255, 255, 0, 500);
 #endif
     mp3.loop();
   }
@@ -1859,7 +1876,7 @@ void parentsMenu() {
     // cancel
     if (selectedOption == 0) {
       mp3.playMp3FolderTrack(904);
-      waitPlaybackToFinish(0, 255, 0, 100);
+      waitPlaybackToFinish(255, 255, 0, 100);
       break;
     }
     // erase tag
@@ -1888,7 +1905,7 @@ void parentsMenu() {
           else mp3.playMp3FolderTrack(922);
         }
 #if defined STATUSLED ^ defined STATUSLEDRGB
-        statusLedUpdate(BLINK, 255, 255, 0, 500);
+        statusLedUpdate(BLINK, 255, 0, 255, 500);
 #endif
         mp3.loop();
       }
@@ -1954,17 +1971,16 @@ void parentsMenu() {
         mp3.playMp3FolderTrack(951 + i);
         waitPlaybackToFinish(0, 0, 255, 500);
         // clear ir receive buffer
-        irReceiver.resume();
+        IrReceiver.resume();
         // wait for ir signal
-        while (!irReceiver.decode(&irReading)) {
+        while (!IrReceiver.decode()) {
 #if defined STATUSLED ^ defined STATUSLEDRGB
           statusLedUpdate(BLINK, 0, 0, 255, 300);
 #endif
         }
-        // on NEC encoding 0xFFFFFFFF means the button is held down, we ignore this
-        if (!(irReading.decode_type == NEC && irReading.value == 0xFFFFFFFF)) {
-          // convert irReading.value from 32bit to 16bit
-          uint16_t irRemoteCode = (irReading.value & 0xFFFF);
+        // process only codes which don't have the repeat flag set
+        if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT)) {
+          uint16_t irRemoteCode = IrReceiver.decodedIRData.command;
           Serial.print(F("ir code: 0x"));
           Serial.print(irRemoteCode <= 0x0010 ? "0" : "");
           Serial.print(irRemoteCode <= 0x0100 ? "0" : "");
@@ -1975,7 +1991,7 @@ void parentsMenu() {
           statusLedUpdate(BURST4, 0, 255, 0, 0);
 #endif
         }
-        // key was held down on NEC encoding, repeat last question
+        // key was held down, repeat last question
         else {
           i--;
 #if defined STATUSLED ^ defined STATUSLEDRGB
@@ -2062,7 +2078,7 @@ void parentsMenu() {
 
   switchButtonConfiguration(PAUSE);
   shutdownTimer(START);
-  inputEvent = NOACTION;
+  inputEvent = NOP;
 }
 
 #if defined PINCODE
@@ -2097,12 +2113,12 @@ bool enterPinCode() {
 
       switchButtonConfiguration(PAUSE);
       shutdownTimer(START);
-      inputEvent = NOACTION;
+      inputEvent = NOP;
 
       return false;
     }
     // record inputs
-    if (inputEvent != NOACTION) pinCodeEntered[pinCodeSlot++] = inputEvent;
+    if (inputEvent != NOP) pinCodeEntered[pinCodeSlot++] = inputEvent;
     // if the complete pin code has been recorded
     if (pinCodeSlot == pinCodeLength) {
       // compare entered with stored pin code
@@ -2114,7 +2130,7 @@ bool enterPinCode() {
 
         switchButtonConfiguration(PAUSE);
         shutdownTimer(START);
-        inputEvent = NOACTION;
+        inputEvent = NOP;
 
         return true;
       }
@@ -2131,7 +2147,7 @@ bool enterPinCode() {
       }
     }
 #if defined STATUSLED ^ defined STATUSLEDRGB
-    statusLedUpdate(BLINK, 0, 0, 255, 500);
+    statusLedUpdate(BLINK, 255, 255, 0, 500);
 #endif
     mp3.loop();
   }
@@ -2180,6 +2196,15 @@ void statusLedUpdate(uint8_t statusLedAction, uint8_t red, uint8_t green, uint8_
           statusLedState = !statusLedState;
           if (statusLedState) statusLedUpdateHal(red, green, blue, 255);
           else statusLedUpdateHal(0, 0, 0, 0);
+          break;
+        }
+      case BURST2: {
+          for (uint8_t i = 0; i < 4; i++) {
+            statusLedState = !statusLedState;
+            if (statusLedState) statusLedUpdateHal(red, green, blue, 255);
+            else statusLedUpdateHal(0, 0, 0, 0);
+            delay(100);
+          }
           break;
         }
       case BURST4: {

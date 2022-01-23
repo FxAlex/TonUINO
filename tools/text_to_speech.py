@@ -11,7 +11,7 @@ except ImportError:
 
 class PatchedArgumentParser(argparse.ArgumentParser):
     def error(self, message):
-        sys.stderr.write('error: %s\n\n' % message)
+        sys.stderr.write('ERROR: %s\n\n' % message)
         self.print_help()
         sys.exit(2)
 
@@ -20,13 +20,17 @@ sayVoiceByLang = {
     'de': 'Anna',
     'en': 'Samantha',
     'fr': 'Thomas',
-    'nl': 'Claire'
+    'nl': 'Xander',
+    'es': 'Monica',
+    'cz': 'Zuzana'
 }
 googleVoiceByLang = {
     'de': { 'languageCode': 'de-DE', 'name': 'de-DE-Wavenet-C' },
-    'en': { 'languageCode': 'en-US', 'name': 'en-US-Wavenet-D' },
+    'en': { 'languageCode': 'en-US', 'name': 'en-US-Wavenet-C' },
     'fr': { 'languageCode': 'fr-FR', 'name': 'fr-FR-Wavenet-C' },
     'nl': { 'languageCode': 'nl-NL', 'name': 'nl-NL-Wavenet-A' },
+    'es': { 'languageCode': 'es-ES', 'name': '' },
+    'cz': { 'languageCode': 'cs-CZ', 'name': 'cs-CZ-Wavenet-A' }
 }
 amazonVoiceByLang = {
     # See: https://docs.aws.amazon.com/de_de/polly/latest/dg/voicelist.html
@@ -34,6 +38,7 @@ amazonVoiceByLang = {
     'en': 'Joanna',
     'fr': 'Celine',
     'nl': 'Lotte',
+    'es': 'Lucia'
 }
 
 
@@ -47,7 +52,7 @@ Amazon Polly sounds best, Google text-to-speech is second, MacOS `say` sounds wo
 """.strip()
 
 def addArgumentsToArgparser(argparser):
-    argparser.add_argument('--lang', choices=['de', 'en', 'fr', 'nl'], default='de', help='The language (default: de)')
+    argparser.add_argument('--lang', choices=['de', 'en', 'fr', 'nl', 'es', 'cz'], default='de', help='The language (default: de)')
     argparser.add_argument('--use-say', action='store_true', default=None, help="If set, the MacOS tool `say` will be used.")
     argparser.add_argument('--use-amazon', action='store_true', default=None, help="If set, Amazon Polly is used. If missing the MacOS tool `say` will be used.")
     argparser.add_argument('--use-google-key', type=str, default=None, help="The API key of the Google text-to-speech account to use.")
@@ -56,6 +61,18 @@ def addArgumentsToArgparser(argparser):
 def checkArgs(argparser, args):
     if not args.use_say and not args.use_amazon and args.use_google_key is None:
         print('ERROR: You have to provide one of the arguments `--use-say`, `--use-amazon` or `--use-google-key`\n')
+        argparser.print_help()
+        sys.exit(2)
+    if args.use_say:
+        checkLanguage(sayVoiceByLang, args.lang, argparser)
+    if args.use_google_key:
+        checkLanguage(googleVoiceByLang, args.lang, argparser)
+    if args.use_amazon:
+        checkLanguage(amazonVoiceByLang, args.lang, argparser)
+
+def checkLanguage(dictionary, lang, argparser):
+    if lang not in dictionary:
+        print('ERROR: Language is not supported by selected text-to-speech engine\n')
         argparser.print_help()
         sys.exit(2)
 
@@ -73,7 +90,7 @@ def textToSpeech(text, targetFile, lang='de', useAmazon=False, useGoogleKey=None
             targetFile])
     elif useGoogleKey:
         responseJson = postJson(
-            'https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=' + useGoogleKey,
+            'https://texttospeech.googleapis.com/v1/text:synthesize?key=' + useGoogleKey,
             {
                 'audioConfig': {
                     'audioEncoding': 'MP3',

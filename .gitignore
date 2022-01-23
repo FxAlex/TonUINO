@@ -27,7 +27,7 @@ Temporary Items
 .apdisk
 
 # TonUINO
-sd-card
+sd-card*
 __pycache__
 *.pyc
 
